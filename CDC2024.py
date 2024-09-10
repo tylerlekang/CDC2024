@@ -90,8 +90,6 @@ def setPlatformTrueLinearDyn(a1, a2, beta, prts=True):
     B = np.array([[0.],
                 [beta]])
 
-    m = B.shape[1] ###################################################################
-
     if prts:
         print('A:\n',A,A.shape)
         print('eig:',A_eig)
@@ -158,8 +156,24 @@ def setPlatformNLnoBump(theta1, theta2, theta3, prts=True):
     return PsiNBFunc,ThetaPsiNBFunc
 
 
+## 2nd order linear damped oscillator
+def set2ndLinDampedOsc(w0, xi, prts=True):
+    Ar = np.array([[0,1],
+                [-w0**2,-2*xi*w0]])
+    Ar_eig = np.linalg.eig(Ar)[0]
+    Br = np.array([[0.],
+                [w0**2]])
+
+    if prts:
+        print('Ar:\n',Ar,Ar.shape)
+        print('eig:',Ar_eig)
+        print('Br:\n',Br,Br.shape)
+
+    return Ar,Br
+
+
 ## Euler simulation of uncontrolled dynamics
-def plotStateSim(ts, x, PsiVals = None, ThetaPsiVals = None):
+def plotStateSim(ts, x, PsiVals = None, ThetaPsiVals = None, Ref=False):
     n = x.shape[0]
     tN = ts.size
     
@@ -167,11 +181,15 @@ def plotStateSim(ts, x, PsiVals = None, ThetaPsiVals = None):
         plt.figure(figsize=(12,3))
         plt.axhline(0,c='k',lw=0.5) # axes lines
         plt.axvline(0,c='k',lw=0.5)
-        for i in range(n): plt.plot(ts,x[i],label=r'$x_{t,%d}$'%(i+1))
+        for i in range(n):
+            if Ref: labi = r'$x^r_{t,%d}$'%(i+1)
+            else: labi = r'$x_{t,%d}$'%(i+1)
+            plt.plot(ts,x[i],label=labi)
         leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left',edgecolor='w')
         for line in leg.legendHandles: line.set_linewidth(2)
         plt.xlabel(r'time $t$')
-        plt.ylabel(r'states $x_t$')
+        if Ref: plt.ylabel(r'ref states $x^r_t$')
+        else: plt.ylabel(r'states $x_t$')
         # leg = plt.legend(bbox_to_anchor=(0.99,1),loc='upper left',fontsize=15,edgecolor='w')
         # for line in leg.legendHandles: line.set_linewidth(2)
         # plt.xlabel(r'time $t$',fontsize=15)
@@ -222,7 +240,7 @@ def plotStateSim(ts, x, PsiVals = None, ThetaPsiVals = None):
     plt.show()
     
 
-def simLinearUncontrolled(A,t0,tf,dt,x0=[1.,1.]):
+def simLinearUncontrolled(A, t0, tf, dt, x0=[1.,1.], Ref=False):
     ts = np.arange(t0,tf+dt,dt)
     print('time steps:',ts,ts.shape)
     
@@ -238,7 +256,7 @@ def simLinearUncontrolled(A,t0,tf,dt,x0=[1.,1.]):
 
     print('Euler integration simulation time: %.1f sec\n'%(perf_counter()-tr0))
     
-    plotStateSim(ts,x)
+    plotStateSim(ts,x, Ref=Ref)
 
 
 def simFullUncontrolled(A,B,beta,PsiFunc,ThetaPsiFunc,t0,tf,dt,x0=[1.,1.]):
