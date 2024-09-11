@@ -88,14 +88,16 @@ def setPlatformTrueLinearDyn(a1, a2, beta, prts=True):
                   [a1,a2]])
     A_eig = np.sort(np.linalg.eig(A)[0])
     B = np.array([[0.],
-                [beta]])
+                  [1.]])
+    BL = B*beta
 
     if prts:
         print('A:\n',A,A.shape)
         print('eig:',A_eig)
-        print('B:\n',B,B.shape)
+        # print('B:\n',B,B.shape)
+        print('B Lambda:\n',BL,BL.shape)
 
-    return A,B
+    return A,BL
 
 
 ## platform matched nonlinearity
@@ -259,7 +261,7 @@ def simLinearUncontrolled(A, t0, tf, dt, x0=[1.,1.], Ref=False):
     plotStateSim(ts,x, Ref=Ref)
 
 
-def simFullUncontrolled(A,B,beta,PsiFunc,ThetaPsiFunc,t0,tf,dt,x0=[1.,1.]):
+def simFullUncontrolled(A,BL,beta,PsiFunc,ThetaPsiFunc,t0,tf,dt,x0=[1.,1.]):
     ts = np.arange(t0,tf+dt,dt)
     print('time steps:',ts,ts.shape)
     
@@ -276,7 +278,7 @@ def simFullUncontrolled(A,B,beta,PsiFunc,ThetaPsiFunc,t0,tf,dt,x0=[1.,1.]):
         PsiVals[:,ti] = PsiFunc(x[:,ti]).reshape((3,))
         ThetaPsiVals[:,ti] = ThetaPsiFunc(x[:,ti])
         
-        xDot = A@x[:,ti] + (B*beta*ThetaPsiVals[:,ti]).reshape((n,)) # shape (n,)
+        xDot = A@x[:,ti] + (BL*beta*ThetaPsiVals[:,ti]).reshape((n,)) # shape (n,)
         x[:,ti+1] = x[:,ti] + xDot*dt # shape (n,)
     
     # final vals
