@@ -363,3 +363,21 @@ def getThetaApprox(fxFunc,psiRandFunc,xmin,xmax,xN, prtMaxErr=True):
     # print(approx_errors_overGrid.shape)
 
     return ThetaApprox,approx_errors_overGrid,maxError
+
+
+# reference input initializer
+def setRefInput(t0, tf, dt, w, c, plot=False):
+    ts = np.arange(t0,tf+dt,dt)
+    print('time steps:',ts,ts.shape)
+    
+    r = c*np.sin(w*ts)[np.newaxis,:] # make shape (1,ts.size)
+    
+    if plot:
+        plt.figure(figsize=(12,3))
+        plt.axhline(0,c='k',lw=0.5) # axes lines
+        plt.axvline(0,c='k',lw=0.5)
+        plt.plot(ts,r[0])
+        plt.xlabel(r'time $t$')
+        plt.ylabel(r'Ref Input $r_t$')
+    
+    return r
