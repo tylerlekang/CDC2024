@@ -481,7 +481,7 @@ def plotMRACsimTimeResiduals(ts,x,xr, saveFig=False):
     plt.sca(ax[1])
     plt.axhline(0,c='gray',lw=0.5) # axes lines
     plt.axvline(0,c='gray',lw=0.5)
-    plt.plot(ts,x[1] - xr[1],color='m',label=r'$x_{t,1}-x_{t,1}^r$')
+    plt.plot(ts,x[1] - xr[1],color='m',label=r'$x_{t,2}-x_{t,2}^r$')
     leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left')
     # leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left',fontsize=15)
     for line in leg.legend_handles: line.set_linewidth(2)
