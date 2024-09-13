@@ -97,7 +97,7 @@ def setPlatformTrueLinearDyn(a1, a2, beta, prts=True):
         # print('B:\n',B,B.shape)
         print('B Lambda:\n',BL,BL.shape)
 
-    return A,BL
+    return A,BL,B
 
 
 ## platform matched nonlinearity
@@ -261,7 +261,7 @@ def simLinearUncontrolled(A, t0, tf, dt, x0=[1.,1.], Ref=False):
     plotStateSim(ts,x, Ref=Ref)
 
 
-def simFullUncontrolled(A,BL,beta,PsiFunc,ThetaPsiFunc,t0,tf,dt,x0=[1.,1.]):
+def simFullUncontrolled(A,BL,PsiFunc,ThetaPsiFunc,t0,tf,dt,x0=[1.,1.]):
     ts = np.arange(t0,tf+dt,dt)
     print('time steps:',ts,ts.shape)
     
@@ -278,7 +278,7 @@ def simFullUncontrolled(A,BL,beta,PsiFunc,ThetaPsiFunc,t0,tf,dt,x0=[1.,1.]):
         PsiVals[:,ti] = PsiFunc(x[:,ti]).reshape((3,))
         ThetaPsiVals[:,ti] = ThetaPsiFunc(x[:,ti])
         
-        xDot = A@x[:,ti] + (BL*beta*ThetaPsiVals[:,ti]).reshape((n,)) # shape (n,)
+        xDot = A@x[:,ti] + (BL*ThetaPsiVals[:,ti]).reshape((n,)) # shape (n,)
         x[:,ti+1] = x[:,ti] + xDot*dt # shape (n,)
     
     # final vals
@@ -338,7 +338,6 @@ def getThetaApprox(fxFunc,psiRandFunc,xmin,xmax,xN, prtMaxErr=True):
     
     fx = np.zeros((xy.shape[0],1))
     for i,xyi in enumerate(xy):
-        # print(xyi,xyi.shape) ###############
         fx[i] = fxFunc(xyi)
         
     psiRand = psiRandFunc(xy.T)
@@ -365,7 +364,7 @@ def getThetaApprox(fxFunc,psiRandFunc,xmin,xmax,xN, prtMaxErr=True):
     return ThetaApprox,approx_errors_overGrid,maxError
 
 
-# reference input initializer
+## reference input initializer
 def setRefInput(t0, tf, dt, w, c, plot=False):
     ts = np.arange(t0,tf+dt,dt)
     print('time steps:',ts,ts.shape)
@@ -381,3 +380,146 @@ def setRefInput(t0, tf, dt, w, c, plot=False):
         plt.ylabel(r'Ref Input $r_t$')
     
     return r
+
+
+## main MRAC sim
+
+def simMRAC(t0, tf, dt, A, BL, B, fxFunc, Ar, Br, r, KxT, KrT, P, Gamma, PsiApprox, x0=[0.,0.]):
+    ts = np.arange(t0,tf+dt,dt)
+    print('time steps:',ts,ts.shape)
+
+    n = BL.shape[0] # number of rows is number of states
+    m_in = BL.shape[1] # number of cols is number of inputs
+    m = PsiApprox(np.array([[1.],[1.]])).shape[0] # row length of PsiApprox vector func at test point
+    
+    u = np.zeros((m_in,ts.size))
+    x = np.zeros((n,ts.size)) # true platform state
+    x[:,0] = x0
+    xr = np.zeros((n,ts.size)) # ref system state
+    xr[:,0] = x0
+    e = np.zeros((n,ts.size))
+    e[:,0] = x[:,0] - xr[:,0]
+
+    Thetahat = np.zeros((1,m,ts.size)) # Theta estimator states
+
+    tr0 = perf_counter()
+    for ti,t in enumerate(ts[:-1]):
+
+        PsiAppXt = PsiApprox(x[:,ti][:,np.newaxis]) # needs (2,1) input
+        # print(Thetahat[...,ti].shape)
+        u[:,ti] = KxT @ x[:,ti] + KrT @ r[:,ti] - Thetahat[...,ti] @ PsiAppXt
+        # print(u[:,ti].shape)
+
+        xDot = A@x[:,ti] + (BL@(u[:,ti] + fxFunc(x[:,ti]))).reshape((n,)) # shape (n,)
+        # print((A@x[:,ti]).shape)
+        # print((BL@(u[:,ti] + fxFunc(x[:,ti]))).shape)
+        x[:,ti+1] = x[:,ti] + xDot*dt # shape (n,)
+
+        xrDot = Ar@xr[:,ti] + Br@r[:,ti]
+        xr[:,ti+1] = xr[:,ti] + xrDot*dt
+
+        e[:,ti+1] = x[:,ti+1] - xr[:,ti+1]
+        eTPB = e[:,ti+1].T @ P @ B
+
+        # update Thetahat to use for next timestep
+        # print(Gamma.shape)
+        # print(PsiAppXt.shape)
+        # print(eTPB.shape)
+        # print(np.outer(PsiAppXt,eTPB).shape)
+        ThetahatDot = Gamma @ np.outer(PsiAppXt,eTPB)
+        # print(ThetahatDot.shape)
+        # print(ThetahatDot.T.shape)
+        # print(Thetahat[...,ti].shape)
+        Thetahat[...,ti+1] = Thetahat[...,ti] + ThetahatDot.T*dt
+
+    u[:,-1] = u[:,-2] # holdover for plot
+    print('Euler integration simulation time: %.1f sec'%(perf_counter()-tr0))
+    
+    return x,xr,e,Thetahat,ts
+
+
+def plotMRACsimTimeseries(ts,r,x,xr,saveFig=False):
+    fig,ax = plt.subplots(2,1,sharex=True,figsize=(12,5))
+    plt.sca(ax[0])
+    plt.axhline(0,c='gray',lw=0.5) # axes lines
+    plt.axvline(0,c='gray',lw=0.5)
+    plt.plot(ts,r[0],label=r'$r_t$')
+    plt.plot(ts,xr[0],label=r'$x_{t,1}^r$')
+    plt.plot(ts,x[0],ls=':',label=r'$x_{t,1}$')
+    leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left')
+    # leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left',fontsize=15)
+    for line in leg.legend_handles: line.set_linewidth(2)
+    # plt.yticks(fontsize=13)
+    plt.sca(ax[1])
+    plt.axhline(0,c='gray',lw=0.5) # axes lines
+    plt.axvline(0,c='gray',lw=0.5)
+    plt.plot(ts,xr[1],'C1',label=r'$x_{t,2}^r$')
+    plt.plot(ts,x[1],'C2',ls=':',label=r'$x_{t,2}$')
+    leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left')
+    # leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left',fontsize=15)
+    for line in leg.legend_handles: line.set_linewidth(2)
+    plt.xlabel(r'time $t$')
+    # plt.xlabel(r'time $t$',fontsize=15)
+    # plt.xticks(fontsize=13)
+    # plt.yticks(fontsize=13)
+    plt.tight_layout()
+    plt.show()
+    
+    if saveFig:
+        fig.savefig('timeseries.pdf',bbox_inches='tight',transparent=False)
+
+
+def plotMRACsimTimeResiduals(ts,x,xr, saveFig=False):
+    fig,ax = plt.subplots(2,1,sharex=True,figsize=(12,5))
+    plt.sca(ax[0])
+    plt.axhline(0,c='gray',lw=0.5) # axes lines
+    plt.axvline(0,c='gray',lw=0.5)
+    plt.plot(ts,x[0] - xr[0],color='r',label=r'$x_{t,1}-x_{t,1}^r$')
+    leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left')
+    # leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left',fontsize=15)
+    for line in leg.legend_handles: line.set_linewidth(2)
+    plt.sca(ax[1])
+    plt.axhline(0,c='gray',lw=0.5) # axes lines
+    plt.axvline(0,c='gray',lw=0.5)
+    plt.plot(ts,x[1] - xr[1],color='m',label=r'$x_{t,1}-x_{t,1}^r$')
+    leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left')
+    # leg = plt.legend(bbox_to_anchor=(0.995,1),loc='upper left',fontsize=15)
+    for line in leg.legend_handles: line.set_linewidth(2)
+    plt.xlabel(r'time $t$')
+    # plt.xlabel(r'time $t$',fontsize=15)
+    # plt.xticks(fontsize=13)
+    # plt.yticks(fontsize=13)
+    plt.tight_layout()
+    plt.show()
+    
+    if saveFig:
+        fig.savefig('time_residuals.pdf',bbox_inches='tight',transparent=False)
+
+
+def plotMRACsimPhasePlot(x,xr,saveFig=False):
+    fig = plt.figure(figsize=(6,5))
+    # plt.axhline(0,c='gray',lw=0.5) # axes lines
+    # plt.axvline(0,c='gray',lw=0.5)
+    plt.plot(xr[0],xr[1],ls='--',lw=1)
+    plt.plot(x[0],x[1],c='c',ls='-',lw=1,alpha=0.4)
+    plt.xlabel(r'$x_{t,1}$')
+    plt.ylabel(r'$x_{t,2}$')
+    plt.xlim([-10,10])
+    plt.ylim([-6,6])
+    plt.tight_layout()
+    plt.show()
+
+    if saveFig:
+        fig.savefig('phase_plot.pdf',bbox_inches='tight',transparent=False)
+
+
+def plotThetahatTimeseries(ts,Thetahat, saveFig=False):
+    fig = plt.figure(figsize=(12,5))
+    for Thi in range(Thetahat.shape[1]):
+        plt.plot(ts,Thetahat[0,Thi,:])
+    plt.xlabel(r'time $t$')
+    plt.tight_layout()
+    plt.show()
+    
+    if saveFig:
+        fig.savefig('thetahat_timeseries.pdf',bbox_inches='tight',transparent=False)
